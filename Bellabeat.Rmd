@@ -1,0 +1,552 @@
+---
+title: "Case Study 2: Bellabeat"
+author: Burçak Aydın
+date: "2023-02-06"
+output: 
+  html_document:
+    number_sections: true
+    toc: true
+    toc_depth: 3
+    theme: readable
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+Case Study: How Can a Wellness Technology Company Play It Smart?
+
+# Scenario
+I am a junior data analyst working on the marketing analyst team at Bellabeat, a high-tech manufacturer of health-focused products for women. Bellabeat is a successful small company, but they have the potential to become a larger player in the global smart device market. Urška Sršen, cofounder and Chief Creative Officer of Bellabeat, believes that analyzing smart device fitness data could help unlock new growth opportunities for the company. I have been asked to focus on one of Bellabeat’s products and analyze smart device data to gain insight into how consumers are using their smart devices. I will guide marketing strategy for the company and present the analysis to the Bellabeat executive team along with your high-level recommendations for Bellabeat’s marketing strategy.
+
+
+# Business task
+Based on trends in smart device usage, identify potential opportunities for growth and recommendations for the Bellabeat marketing strategy improvement.
+
+Stakeholders
+
+Urška Sršen - Bellabeat cofounder and Chief Creative Officer
+Sando Mur - Bellabeat cofounder and key member of Bellabeat executive team
+Bellabeat Marketing Analytics team
+
+# Ask Question  
+1. What are some trends in smart device usage?
+2. How could these trends apply to Bellabeat customers?
+3. How could these trends help influence Bellabeat marketing strategy?
+
+# Preparation 
+## Dataset Source
+FitBit Fitness Tracker Data (CC0: Public Domain, dataset made available through Mobius): This Kaggle data set
+contains personal fitness tracker from thirty fitbit users. Thirty eligible Fitbit users consented to the submission of personal tracker data, including minute-level output for physical activity, heart rate, and sleep monitoring. It includes information about daily activity, steps, and heart rate that can be used to explore users’ habits.
+
+## Activating Libraries
+```{r}
+## Install Necessary Packages
+
+library("tidyverse")
+library("skimr")
+library("janitor")
+library("lubridate")
+library("ggrepel")
+library("readr")
+library("data.table")
+library("ggpubr")
+library("here")
+```
+
+## Importing and Merging Datasets
+
+```{r}
+daily_activity <- read_csv("dailyActivity_merged.csv")
+daily_sleep <- read_csv("sleepDay_merged.csv")
+hourly_steps <- read_csv("hourlySteps_merged.csv")     
+```
+
+## Getting Familiar with the Features of Dataset
+```{r}
+## Check the data
+head(daily_activity,5)
+```
+```{r}
+## Check the data
+head(daily_sleep,5)
+```
+
+```{r}
+## Check the data
+head(hourly_steps,5)
+```
+#  Process
+
+## Data Cleaning
+
+```{r}
+# Check NA
+sum(duplicated(daily_activity))
+sum(duplicated(daily_sleep))
+sum(duplicated(hourly_steps))
+```
+
+
+```{r}
+## We drop all NA 
+daily_activity <- daily_activity %>%
+  distinct() %>%
+  drop_na()
+
+daily_sleep <- daily_sleep %>%
+  distinct() %>%
+  drop_na()
+
+hourly_steps <- hourly_steps %>%
+  distinct() %>%
+  drop_na()
+```
+
+
+## Fixing Formatting
+```{r}
+##  Consistency for date and time columns in dataframes
+daily_activity <- daily_activity %>%
+  rename(date = ActivityDate) %>%
+  mutate(date = as_date(date, format = "%m/%d/%Y"))
+
+daily_sleep <- daily_sleep %>%
+  rename(date = SleepDay) %>%
+  mutate(date = as_date(date,format ="%m/%d/%Y %I:%M:%S %p" , tz=Sys.timezone()))
+```
+
+
+```{r}
+# Convert date string to date-time.
+hourly_steps<- hourly_steps %>% 
+  rename(date_time = ActivityHour) %>% 
+  mutate(date_time = as.POSIXct(date_time,format ="%m/%d/%Y %I:%M:%S %p" , tz=Sys.timezone()))
+
+head(hourly_steps)
+```
+
+
+```{r}
+## Check data
+head(daily_activity)
+head(daily_sleep)
+```
+
+
+
+## Merging Data 
+
+```{r}
+# Merge daily_activity and daily_sleep to see any correlation between variables using primary keys as Id and date.
+
+daily_activity_sleep <- merge(daily_activity, daily_sleep, by=c ("Id", "date"))
+glimpse(daily_activity_sleep)
+```
+
+# Analyze Data to Answer Questions
+
+```{r}
+## Calculate the daily steps average by user
+daily_average <- daily_activity_sleep %>%
+  group_by(Id) %>%
+  summarise (mean_daily_steps = mean(TotalSteps), mean_daily_calories = mean(Calories), mean_daily_sleep = mean(TotalMinutesAsleep))
+
+head(daily_average)
+``` 
+
+
+```{r}
+# Classify users by the daily average steps.
+user_type <- daily_average %>%
+  mutate(user_type = case_when(
+    mean_daily_steps < 5000 ~ "Sedentary",
+    mean_daily_steps >= 5000 & mean_daily_steps < 7499 ~ "Lightly Active", 
+    mean_daily_steps >= 7500 & mean_daily_steps < 9999 ~ "Fairly Active", 
+    mean_daily_steps >= 10000 ~ "Very Active"
+  ))
+
+head(user_type)
+```
+
+```{r}
+## Calculate user type percentage
+user_type_percent <- user_type %>%
+  group_by(user_type) %>%
+  summarise(total = n()) %>%
+  mutate(totals = sum(total)) %>%
+  group_by(user_type) %>%
+  summarise(total_percent = total / totals) %>%
+  mutate(labels = scales::percent(total_percent))
+
+user_type_percent$user_type <- factor(user_type_percent$user_type , levels = c("Very Active", "Fairly Active", "Lightly Active", "Sedentary"))
+
+
+head(user_type_percent)
+```
+
+
+# Share Data Through Visuals
+
+
+```{r}
+## Ploting Distribution of User Type Graph
+user_type_percent %>%
+  ggplot(aes(x="",y=total_percent, fill=user_type)) +
+  geom_bar(stat = "identity", width = 1)+
+  coord_polar("y", start=0)+
+  geom_text(aes(label = labels),
+            position = position_stack(vjust = 0.5))+
+  labs(title="Distribution of User Type ") +
+  theme_minimal()+
+  theme(axis.title.x= element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_blank(), 
+        panel.grid = element_blank(), 
+        axis.ticks = element_blank(),
+        axis.text.x = element_blank(),
+        plot.title = element_text(hjust = 0.5, size=14, face = "bold")) +
+  scale_fill_manual(values = c("#004d99", "#3399ff", "lightblue","#cce6ff"))
+ 
+```
+Most of users are Fairly Active.
+
+
+```{r}
+# Calculating the average steps walked and minutes sleeped by weekday.
+
+weekday_steps_sleep <- daily_activity_sleep %>%
+  mutate(weekday = weekdays(date))
+
+weekday_steps_sleep$weekday <-ordered(weekday_steps_sleep$weekday, levels=c("Monday", "Tuesday", "Wednesday", "Thursday",
+"Friday", "Saturday", "Sunday"))
+
+ weekday_steps_sleep <-weekday_steps_sleep%>%
+  group_by(weekday) %>%
+  summarize (daily_steps = mean(TotalSteps), daily_sleep = mean(TotalMinutesAsleep))
+
+head(weekday_steps_sleep,7)
+
+```
+
+
+```{r}
+## Ploting daily steps per weekday
+ggplot(weekday_steps_sleep) +
+      geom_col(aes(weekday, daily_steps), fill =  "#004d99") +
+      geom_hline(yintercept = 7500) +
+      labs(title = "Daily steps per weekday", x= "", y = "") +
+      theme(axis.text.x = element_text(angle = 45,vjust = 0.5, hjust = 1))+
+      theme_bw()
+ 
+```
+Saturday is most active day in steps
+
+```{r}
+# Plotting Minutes asleep per weekday
+
+ggplot(weekday_steps_sleep, aes(weekday, daily_sleep)) +
+  geom_col(fill = "#004d99") +
+  geom_hline(yintercept = 405) +
+  labs(title = "Minutes Asleep per Weekday", x= "", y = "") +
+  theme(axis.text.x = element_text(angle = 45,vjust = 0.5, hjust = 1))+
+  theme_bw()
+
+```
+
+
+
+```{r}
+# Calculate hourly steps
+hourly_steps <- hourly_steps %>%
+  separate(date_time, into = c("date", "time"), sep= " ") %>%
+  mutate(date = ymd(date)) 
+  
+head(hourly_steps)
+```
+
+
+```{r}
+# Plotting hourly steps of the day
+hourly_steps %>%
+  group_by(time) %>%
+  summarize(average_steps = mean(StepTotal)) %>%
+  ggplot() +
+  theme_bw() +
+  geom_col(mapping = aes(x=time, y = average_steps, fill = average_steps)) + 
+  labs(title = "Hourly Steps of the Day", x="", y="") + 
+  scale_fill_gradient(low = "lightblue", high = "#004d99")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+```
+Least steps time is between 00.00-05.00 which is home sleeping/resting time. 
+Most active time is between 12.00-14.00 and 17.00-19.00
+
+
+
+
+```{r}
+# Correlation between variables
+
+ggplot(daily_activity_sleep, aes(x=TotalSteps, y=TotalMinutesAsleep))+
+  geom_jitter() +
+  geom_smooth(color = "blue") + 
+  labs(title = "Daily steps vs Minutes asleep", x = "Daily Steps", y= "Minutes Asleep") +
+   theme(panel.background = element_blank(),
+        plot.title = element_text( size=14))
+```
+
+
+```{r}
+# Correlation between variables
+ggplot(daily_activity_sleep, aes(x=TotalSteps, y=Calories))+
+        geom_jitter() +
+        geom_smooth(color = "blue") + 
+        labs(title = "Daily Steps vs Calories", x = "Daily Steps", y= "Calories") +
+         theme(panel.background = element_blank(),
+              plot.title = element_text( size=14))
+    
+```
+
+There is a positive correlation here between Total Steps and Calories which means that 
+"the more active we are, the more calories we burn".
+
+```{r}
+# Calculating number of daily use 
+daily_use <- daily_activity_sleep %>%
+  group_by(Id) %>%
+  summarize(days_used=sum(n())) %>%
+  mutate(usage = case_when(
+    days_used >= 1 & days_used <= 10 ~ "Low Use",
+    days_used >= 11 & days_used <= 20 ~ "Moderate Use", 
+    days_used >= 21 & days_used <= 31 ~ "High Use", 
+  ))
+  
+head(daily_use,7)
+    
+```
+
+
+```{r}
+# # Calculating percentage of daily use 
+daily_use_percent <- daily_use %>%
+  group_by(usage) %>%
+  summarise(total = n()) %>%
+  mutate(totals = sum(total)) %>%
+  group_by(usage) %>%
+  summarise(total_percent = total / totals) %>%
+  mutate(labels = scales::percent(total_percent))
+
+daily_use_percent$usage <- factor(daily_use_percent$usage, levels = c("High Use", "Moderate Use", "Low Use"))
+
+head(daily_use_percent)
+    
+```
+
+
+```{r}
+# Plotting percentage of daily use 
+daily_use_percent %>%
+  ggplot(aes(x="",y=total_percent, fill=usage)) +
+  geom_bar(stat = "identity", width = 1)+
+  coord_polar("y", start=0)+
+  theme_minimal()+
+  theme(axis.title.x= element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_blank(), 
+        panel.grid = element_blank(), 
+        axis.ticks = element_blank(),
+        axis.text.x = element_blank(),
+        plot.title = element_text(hjust = 0.5, size=14, face = "bold")) +
+  geom_text(aes(label = labels),
+            position = position_stack(vjust = 0.5))+
+  scale_fill_manual(values = c("#004d99", "#3399ff","#cce6ff"),
+                    labels = c("High Use - 21 to 31 days",
+                                 "Moderate Use - 11 to 20 days",
+                                 "Low Use - 1 to 10 days"))+
+  labs(title="Daily Smart Device Use")
+    
+```
+
+
+```{r}
+# Merge daily_activity and daily_use using key "Id"
+daily_use_merged <- merge(daily_activity, daily_use, by=c ("Id"))
+head(daily_use_merged)
+    
+```
+
+
+```{r}
+# Calculating and grouping device usage in minutes
+minutes_device_wearing <- daily_use_merged %>% 
+  mutate(total_minutes_wearing = VeryActiveMinutes+FairlyActiveMinutes+LightlyActiveMinutes+SedentaryMinutes)%>%
+  mutate (percent_minutes_wearing = (total_minutes_wearing/1440)*100) %>%
+  mutate (wearing = case_when(
+    percent_minutes_wearing == 100 ~ "All day",
+    percent_minutes_wearing < 100 & percent_minutes_wearing >= 50~ "More than half day", 
+    percent_minutes_wearing < 50 & percent_minutes_wearing > 0 ~ "Less than half day"
+  ))
+
+head(minutes_device_wearing)
+    
+```
+
+
+```{r}
+# Calculating percentage device usage
+minutes_wear_percent<- minutes_device_wearing%>%
+  group_by(wearing) %>%
+  summarise(total = n()) %>%
+  mutate(totals = sum(total)) %>%
+  group_by(wearing) %>%
+  summarise(total_percent = total / totals) %>%
+  mutate(labels = scales::percent(total_percent))
+minutes_wear_percent
+
+```
+
+```{r}
+# Calculating device usage by filtering "High Use"
+
+minutes_wear_high_use <- minutes_device_wearing%>%
+  filter (usage == "High Use")%>%
+  group_by(wearing) %>%
+  summarise(total = n()) %>%
+  mutate(totals = sum(total)) %>%
+  group_by(wearing) %>%
+  summarise(total_percent = total / totals) %>%
+  mutate(labels = scales::percent(total_percent))
+minutes_wear_high_use
+```
+
+```{r}
+# Calculating device usage by filtering "Moderate Use"
+minutes_wear_mod_use <-  minutes_device_wearing%>%
+  filter(usage == "Moderate Use") %>%
+  group_by(wearing) %>%
+  summarise(total = n()) %>%
+  mutate(totals = sum(total)) %>%
+  group_by(wearing) %>%
+  summarise(total_percent = total / totals) %>%
+  mutate(labels = scales::percent(total_percent))
+minutes_wear_mod_use
+    
+```
+
+
+```{r}
+# Calculating device usage by filtering "Low Use"
+minutes_wearing_low_use <- minutes_device_wearing%>%
+  filter (usage == "Low Use") %>%
+  group_by(wearing) %>%
+  summarise(total = n()) %>%
+  mutate(totals = sum(total)) %>%
+  group_by(wearing) %>%
+  summarise(total_percent = total / totals) %>%
+  mutate(labels = scales::percent(total_percent))
+
+ minutes_wearing_low_use   
+```
+
+
+```{r}
+# Plotting graph of time wearing per day
+ggplot(minutes_wear_percent, aes(x="",y=total_percent, fill=wearing)) +
+  geom_bar(stat = "identity", width = 1)+
+  coord_polar("y", start=0)+
+  theme_minimal()+
+  theme(axis.title.x= element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_blank(), 
+        panel.grid = element_blank(), 
+        axis.ticks = element_blank(),
+        axis.text.x = element_blank(),
+        plot.title = element_text(hjust = 0.5, size=14, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5)) +
+    scale_fill_manual(values = c("#004d99", "#3399ff", "#cce6ff"))+
+  geom_text(aes(label = labels),
+            position = position_stack(vjust = 0.5), size = 3.5)+
+  labs(title="Time wearing per day", subtitle = "Total Users")
+ 
+
+```
+
+
+```{r}
+# Plotting graph of time wearing per day with High Use - Users
+ggplot(minutes_wear_high_use, aes(x="",y=total_percent, fill=wearing)) +
+geom_bar(stat = "identity", width = 1)+
+coord_polar("y", start=0)+
+theme_minimal()+
+theme(axis.title.x= element_blank(),
+      axis.title.y = element_blank(),
+      panel.border = element_blank(), 
+      panel.grid = element_blank(), 
+      axis.ticks = element_blank(),
+      axis.text.x = element_blank(),
+      plot.title = element_text(hjust = 0.5, size=14, face = "bold"),
+      plot.subtitle = element_text(hjust = 0.5), 
+      legend.position = "none")+
+  scale_fill_manual(values = c("#004d99", "#3399ff","#cce6ff"))+
+geom_text_repel(aes(label = labels),
+          position = position_stack(vjust = 0.5), size = 3)+
+labs(title="", subtitle = "High Use - Users")
+```
+
+
+```{r}
+# Plotting graph of time wearing per day with Moderate Use - Users
+ggplot(minutes_wear_mod_use, aes(x="",y=total_percent, fill=wearing)) +
+  geom_bar(stat = "identity", width = 1)+
+  coord_polar("y", start=0)+
+  theme_minimal()+
+  theme(axis.title.x= element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_blank(), 
+        panel.grid = element_blank(), 
+        axis.ticks = element_blank(),
+        axis.text.x = element_blank(),
+        plot.title = element_text(hjust = 0.5, size=14, face = "bold"), 
+        plot.subtitle = element_text(hjust = 0.5),
+        legend.position = "none") +
+    scale_fill_manual(values = c("#004d99", "#3399ff","#cce6ff"))+
+  geom_text(aes(label = labels),
+            position = position_stack(vjust = 0.5), size = 3)+
+  labs(title="", subtitle = "Moderate Use - Users") 
+ 
+```
+
+
+```{r}
+# Plotting graph of time wearing per day with Low Use - Users
+ ggplot(minutes_wearing_low_use, aes(x="",y=total_percent, fill=wearing)) +
+  geom_bar(stat = "identity", width = 1)+
+  coord_polar("y", start=0)+
+  theme_minimal()+
+  theme(axis.title.x= element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_blank(), 
+        panel.grid = element_blank(), 
+        axis.ticks = element_blank(),
+        axis.text.x = element_blank(),
+        plot.title = element_text(hjust = 0.5, size=14, face = "bold"), 
+        plot.subtitle = element_text(hjust = 0.5),
+        legend.position = "none") +
+    scale_fill_manual(values = c("#004d99", "#3399ff", "#cce6ff"))+
+  geom_text(aes(label = labels),
+            position = position_stack(vjust = 0.5), size = 3)+
+  labs(title="", subtitle = "Low Use - Users")
+    
+```
+
+
+# Conlusion
+
+Remember the questions we asked in the beginning.
+1. What are some trends in smart device usage?
+2. How could these trends apply to Bellabeat customers?
+3. How could these trends help influence Bellabeat marketing strategy?
+
+The mission of Bellabeat is to empower women by providing them findings to discover themselves.
+
+In order to respond the business task and help Bellabeat on their mission, I would recommend to use company's own tracking data. Data sets used could be a big sample for further analysis. Demographic details of users such as age could be useful to see the trends of movement in different women group. 
